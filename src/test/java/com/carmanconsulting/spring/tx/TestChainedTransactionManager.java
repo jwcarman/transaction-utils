@@ -1,6 +1,6 @@
 package com.carmanconsulting.spring.tx;
 
-import org.apache.activemq.ActiveMQConnectionFactory;
+import org.apache.activemq.pool.PooledConnectionFactory;
 import org.apache.commons.dbcp.BasicDataSource;
 import org.apache.commons.dbcp.managed.BasicManagedDataSource;
 import org.h2.Driver;
@@ -19,7 +19,6 @@ import org.springframework.transaction.jta.JtaTransactionManager;
 import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
-import javax.jms.ConnectionFactory;
 import javax.jms.JMSException;
 import javax.jms.Message;
 import javax.jms.TextMessage;
@@ -44,7 +43,7 @@ public class TestChainedTransactionManager
     private BasicDataSource ds2;
     private BasicDataSource ds3;
     private Jotm jotm;
-    private ConnectionFactory connectionFactory;
+    private PooledConnectionFactory connectionFactory;
     private JtaTransactionManager jtaTransactionManager;
     private JmsTransactionManager jmsTransactionManager;
     private ChainedTransactionManager chainedTransactionManager;
@@ -59,6 +58,7 @@ public class TestChainedTransactionManager
         closeDataSource(ds1);
         closeDataSource(ds2);
         closeDataSource(ds3);
+        connectionFactory.stop();
     }
 
     private void closeDataSource(BasicDataSource ds)
@@ -77,7 +77,11 @@ public class TestChainedTransactionManager
     public void setUpConnections() throws Exception
     {
         jotm = new Jotm(true, false);
-        connectionFactory = new ActiveMQConnectionFactory("vm:" + getClass().getSimpleName() + "?persistent=false&useJmx=false");
+
+        connectionFactory = new PooledConnectionFactory("vm://" + getClass().getSimpleName() + "?broker.persistent=false&broker.useJmx=false");
+        connectionFactory.setMaxConnections(1);
+        connectionFactory.setMaximumActive(1);
+        connectionFactory.start();
         ds1 = createDataSource();
         ds2 = createDataSource();
         ds3 = createDataSource();
