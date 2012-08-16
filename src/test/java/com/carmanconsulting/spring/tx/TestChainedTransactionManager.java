@@ -20,15 +20,16 @@ import org.springframework.transaction.support.TransactionCallback;
 import org.springframework.transaction.support.TransactionTemplate;
 
 import javax.jms.ConnectionFactory;
+import javax.jms.JMSException;
 import javax.jms.Message;
+import javax.jms.TextMessage;
 import javax.sql.DataSource;
 import java.sql.Connection;
 import java.sql.SQLException;
 import java.sql.Statement;
 import java.util.UUID;
 
-import static org.junit.Assert.assertEquals;
-import static org.junit.Assert.assertNull;
+import static org.junit.Assert.*;
 
 public class TestChainedTransactionManager
 {
@@ -44,6 +45,9 @@ public class TestChainedTransactionManager
     private BasicDataSource ds3;
     private Jotm jotm;
     private ConnectionFactory connectionFactory;
+    private JtaTransactionManager jtaTransactionManager;
+    private JmsTransactionManager jmsTransactionManager;
+    private ChainedTransactionManager chainedTransactionManager;
 
 //----------------------------------------------------------------------------------------------------------------------
 // Other Methods
@@ -77,6 +81,10 @@ public class TestChainedTransactionManager
         ds1 = createDataSource();
         ds2 = createDataSource();
         ds3 = createDataSource();
+        jtaTransactionManager = new JtaTransactionManager(jotm.getTransactionManager());
+
+        jmsTransactionManager = new JmsTransactionManager(connectionFactory);
+        chainedTransactionManager = new ChainedTransactionManager(jtaTransactionManager, jmsTransactionManager);
     }
 
     private BasicDataSource createDataSource()
@@ -102,7 +110,7 @@ public class TestChainedTransactionManager
             statement = connection.createStatement();
             statement.executeUpdate(sql);
         }
-        catch(SQLException e)
+        catch (SQLException e)
         {
             throw new RuntimeException("Unable to execute update.", e);
         }
@@ -117,28 +125,29 @@ public class TestChainedTransactionManager
     {
         try
         {
-            if(connection != null)
+            if (connection != null)
             {
                 connection.close();
             }
         }
-        catch(SQLException e)
+        catch (SQLException e)
         {
             logger.error("Unable to close connection.", e);
         }
     }
+
     private void closeStatement(Statement statement)
     {
         try
         {
-            if(statement != null)
+            if (statement != null)
             {
                 statement.close();
             }
         }
-        catch(SQLException e)
+        catch (SQLException e)
         {
-            logger.error("Unable to close statement.", e );
+            logger.error("Unable to close statement.", e);
         }
     }
 
@@ -149,15 +158,10 @@ public class TestChainedTransactionManager
     }
 
     @Test
-    public void testDistributedTransactionRollback()
+    public void testCommit()
     {
-        final JtaTransactionManager jtaTransactionManager = new JtaTransactionManager(jotm.getTransactionManager());
-        final JmsTransactionManager jmsTransactionManager = new JmsTransactionManager(connectionFactory);
-        final ChainedTransactionManager transactionManager = new ChainedTransactionManager(jtaTransactionManager, jmsTransactionManager);
-        TransactionTemplate txTemplate = new TransactionTemplate(transactionManager);
+        TransactionTemplate txTemplate = new TransactionTemplate(chainedTransactionManager);
 
-        try
-        {
         txTemplate.execute(new TransactionCallback<Void>()
         {
             @Override
@@ -165,22 +169,79 @@ public class TestChainedTransactionManager
             {
                 new JmsTemplate(connectionFactory).convertAndSend("testQueue", "Hello, World!");
                 executeUpdate("insert into test_table values (1, 'hello')", ds1);
-                executeUpdate("insert into test_table values (2)", ds2);
-
+                executeUpdate("insert into test_table values (2, 'world')", ds2);
                 return null;
             }
         });
-        }
-        catch(RuntimeException e)
+        assertEquals(1, getRowCount(ds1));
+        assertEquals(1, getRowCount(ds2));
+        assertEquals("Hello, World!", getMessageFromQueue(TEST_QUEUE));
+
+    }
+
+    @Test
+    public void testRollback()
+    {
+        TransactionTemplate txTemplate = new TransactionTemplate(chainedTransactionManager);
+        try
         {
-            logger.error("Caught exception!", e);
+            txTemplate.execute(new TransactionCallback<Void>()
+            {
+                @Override
+                public Void doInTransaction(TransactionStatus status)
+                {
+                    new JmsTemplate(connectionFactory).convertAndSend("testQueue", "Hello, World!");
+                    executeUpdate("insert into test_table values (1, 'hello')", ds1);
+                    executeUpdate("insert into test_table values (2)", ds2);
+
+                    return null;
+                }
+            });
+            fail("Should throw an exception!");
         }
+        catch (RuntimeException e)
+        {
+            // Do nothing, expected exception!
+        }
+        assertNoRowsInTable(ds1);
+        assertNoMessagesInQueue(TEST_QUEUE);
+    }
+
+    private void assertNoMessagesInQueue(String queueName)
+    {
+        assertNull(getMessageFromQueue(queueName));
+    }
+
+    private String getMessageFromQueue(String queueName)
+    {
+        try
+        {
+            JmsTemplate template = new JmsTemplate(connectionFactory);
+            template.setReceiveTimeout(10);
+
+            Message message = template.receive(queueName);
+            if (message instanceof TextMessage)
+            {
+                return ((TextMessage) message).getText();
+            }
+            return null;
+        }
+        catch (JMSException e)
+        {
+            throw new RuntimeException("Unable to retrieve message.", e );
+        }
+    }
+
+    private void assertNoRowsInTable(DataSource ds)
+    {
+        int rowCount = getRowCount(ds);
+        assertEquals(0, rowCount);
+    }
+
+    private int getRowCount(DataSource ds)
+    {
         RowCountCallbackHandler handler = new RowCountCallbackHandler();
-        new JdbcTemplate(ds1).query("select * from test_table", handler);
-        assertEquals(0, handler.getRowCount());
-        JmsTemplate template = new JmsTemplate(connectionFactory);
-        template.setReceiveTimeout(250);
-        Message message = template.receive(TEST_QUEUE);
-        assertNull(message);
+        new JdbcTemplate(ds).query("select * from test_table", handler);
+        return handler.getRowCount();
     }
 }
