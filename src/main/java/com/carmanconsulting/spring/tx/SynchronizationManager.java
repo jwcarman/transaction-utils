@@ -6,9 +6,12 @@ package com.carmanconsulting.spring.tx;
  */
 public interface SynchronizationManager
 {
+//
+// Other Methods
+//
+
+    void clearSynchronization();
     void initSynchronization();
 
     boolean isSynchronizationActive();
-
-    void clearSynchronization();
 }

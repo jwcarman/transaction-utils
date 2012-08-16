@@ -13,8 +13,11 @@ import java.util.Map;
  * @author mh
  * @since 14.02.11
  */
-public class MultiTransactionStatus implements TransactionStatus {
-
+public class MultiTransactionStatus implements TransactionStatus
+{
+//
+// Fields
+//
 
     private PlatformTransactionManager mainTransactionManager;
 
@@ -23,129 +26,177 @@ public class MultiTransactionStatus implements TransactionStatus {
 
     private boolean newSynchonization;
 
-    public MultiTransactionStatus(PlatformTransactionManager mainTransactionManager) {
+//
+// Constructors
+//
+
+    public MultiTransactionStatus(PlatformTransactionManager mainTransactionManager)
+    {
         this.mainTransactionManager = mainTransactionManager;
     }
 
-
-    private Map<PlatformTransactionManager, TransactionStatus> getTransactionStatuses() {
-        return transactionStatuses;
-    }
-
-    private TransactionStatus getMainTransactionStatus() {
-        return transactionStatuses.get(mainTransactionManager);
-    }
-
-
-    public void setNewSynchonization() {
-        this.newSynchonization = true;
-    }
-
-    public boolean isNewSynchonization() {
-        return newSynchonization;
-    }
-
+//
+// SavepointManager Implementation
+//
 
     @Override
-    public boolean isNewTransaction() {
-        return getMainTransactionStatus().isNewTransaction();
-    }
-
-    @Override
-    public boolean hasSavepoint() {
-        return getMainTransactionStatus().hasSavepoint();
-    }
-
-    @Override
-    public void setRollbackOnly() {
-        for(TransactionStatus ts : transactionStatuses.values() ){
-            ts.setRollbackOnly();
-        }
-    }
-
-    @Override
-    public boolean isRollbackOnly() {
-        return getMainTransactionStatus().isRollbackOnly();
-    }
-
-    @Override
-    public boolean isCompleted() {
-        return getMainTransactionStatus().isCompleted();
-    }
-
-
-    private static class SavePoints {
-        Map<TransactionStatus,Object> savepoints=new HashMap<TransactionStatus, Object>();
-
-        private void addSavePoint(TransactionStatus status, Object savepoint) {
-            this.savepoints.put(status, savepoint);
-        }
-
-        private void save(TransactionStatus transactionStatus) {
-            Object savepoint = transactionStatus.createSavepoint();
-            addSavePoint(transactionStatus, savepoint);
-        }
-
-
-        public void rollback() {
-            for (TransactionStatus transactionStatus : savepoints.keySet()) {
-                transactionStatus.rollbackToSavepoint(savepointFor(transactionStatus));
-            }
-        }
-
-        private Object savepointFor(TransactionStatus transactionStatus) {
-            return savepoints.get(transactionStatus);
-        }
-
-        public void release() {
-            for (TransactionStatus transactionStatus : savepoints.keySet()) {
-                transactionStatus.releaseSavepoint(savepointFor(transactionStatus));
-            }
-        }
-    }
-
-    @Override
-    public Object createSavepoint() throws TransactionException {
+    public Object createSavepoint() throws TransactionException
+    {
         SavePoints savePoints = new SavePoints();
 
-        for (TransactionStatus transactionStatus : transactionStatuses.values()) {
+        for (TransactionStatus transactionStatus : transactionStatuses.values())
+        {
             savePoints.save(transactionStatus);
         }
         return savePoints;
     }
 
     @Override
-    public void rollbackToSavepoint(Object savepoint) throws TransactionException {
-        SavePoints savePoints= (SavePoints) savepoint;
-        savePoints.rollback();
+    public void releaseSavepoint(Object savepoint) throws TransactionException
+    {
+        ((SavePoints) savepoint).release();
     }
 
     @Override
-    public void releaseSavepoint(Object savepoint) throws TransactionException {
-        ((SavePoints)savepoint).release();
+    public void rollbackToSavepoint(Object savepoint) throws TransactionException
+    {
+        SavePoints savePoints = (SavePoints) savepoint;
+        savePoints.rollback();
     }
 
-    public void registerTransactionManager(TransactionDefinition definition, PlatformTransactionManager transactionManager) {
-        getTransactionStatuses().put(transactionManager, transactionManager.getTransaction(definition));
+//
+// TransactionStatus Implementation
+//
+
+    @Override
+    public void flush()
+    {
+        for (TransactionStatus transactionStatus : transactionStatuses.values())
+        {
+            transactionStatus.flush();
+        }
     }
 
-    void commit(PlatformTransactionManager transactionManager) {
+    @Override
+    public boolean hasSavepoint()
+    {
+        return getMainTransactionStatus().hasSavepoint();
+    }
+
+    @Override
+    public boolean isCompleted()
+    {
+        return getMainTransactionStatus().isCompleted();
+    }
+
+    @Override
+    public boolean isNewTransaction()
+    {
+        return getMainTransactionStatus().isNewTransaction();
+    }
+
+    @Override
+    public boolean isRollbackOnly()
+    {
+        return getMainTransactionStatus().isRollbackOnly();
+    }
+
+    @Override
+    public void setRollbackOnly()
+    {
+        for (TransactionStatus ts : transactionStatuses.values())
+        {
+            ts.setRollbackOnly();
+        }
+    }
+
+//
+// Getter/Setter Methods
+//
+
+    private Map<PlatformTransactionManager, TransactionStatus> getTransactionStatuses()
+    {
+        return transactionStatuses;
+    }
+
+    public boolean isNewSynchonization()
+    {
+        return newSynchonization;
+    }
+
+//
+// Other Methods
+//
+
+    void commit(PlatformTransactionManager transactionManager)
+    {
         TransactionStatus transactionStatus = getTransactionStatus(transactionManager);
         transactionManager.commit(transactionStatus);
     }
 
-    private TransactionStatus getTransactionStatus(PlatformTransactionManager transactionManager) {
+    private TransactionStatus getTransactionStatus(PlatformTransactionManager transactionManager)
+    {
         return this.getTransactionStatuses().get(transactionManager);
     }
 
-    void rollback(PlatformTransactionManager transactionManager) {
+    private TransactionStatus getMainTransactionStatus()
+    {
+        return transactionStatuses.get(mainTransactionManager);
+    }
+
+    public void registerTransactionManager(TransactionDefinition definition, PlatformTransactionManager transactionManager)
+    {
+        getTransactionStatuses().put(transactionManager, transactionManager.getTransaction(definition));
+    }
+
+    void rollback(PlatformTransactionManager transactionManager)
+    {
         transactionManager.rollback(getTransactionStatus(transactionManager));
     }
 
-    @Override
-    public void flush() {
-        for (TransactionStatus transactionStatus : transactionStatuses.values()) {
-            transactionStatus.flush();
+    public void setNewSynchonization()
+    {
+        this.newSynchonization = true;
+    }
+
+//
+// Inner Classes
+//
+
+    private static class SavePoints
+    {
+        Map<TransactionStatus, Object> savepoints = new HashMap<TransactionStatus, Object>();
+
+        private void addSavePoint(TransactionStatus status, Object savepoint)
+        {
+            this.savepoints.put(status, savepoint);
+        }
+
+        private void save(TransactionStatus transactionStatus)
+        {
+            Object savepoint = transactionStatus.createSavepoint();
+            addSavePoint(transactionStatus, savepoint);
+        }
+
+        public void rollback()
+        {
+            for (TransactionStatus transactionStatus : savepoints.keySet())
+            {
+                transactionStatus.rollbackToSavepoint(savepointFor(transactionStatus));
+            }
+        }
+
+        private Object savepointFor(TransactionStatus transactionStatus)
+        {
+            return savepoints.get(transactionStatus);
+        }
+
+        public void release()
+        {
+            for (TransactionStatus transactionStatus : savepoints.keySet())
+            {
+                transactionStatus.releaseSavepoint(savepointFor(transactionStatus));
+            }
         }
     }
 }

@@ -8,6 +8,16 @@ import org.springframework.transaction.support.TransactionSynchronizationManager
  */
 public class DefaultSynchronizationManager implements SynchronizationManager
 {
+//
+// SynchronizationManager Implementation
+//
+
+    @Override
+    public void clearSynchronization()
+    {
+        TransactionSynchronizationManager.clear();
+    }
+
     @Override
     public void initSynchronization()
     {
@@ -18,11 +28,5 @@ public class DefaultSynchronizationManager implements SynchronizationManager
     public boolean isSynchronizationActive()
     {
         return TransactionSynchronizationManager.isSynchronizationActive();
-    }
-
-    @Override
-    public void clearSynchronization()
-    {
-        TransactionSynchronizationManager.clear();
     }
 }

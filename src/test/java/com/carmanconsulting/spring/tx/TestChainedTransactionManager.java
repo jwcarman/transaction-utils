@@ -32,12 +32,12 @@ import static org.junit.Assert.*;
 
 public class TestChainedTransactionManager
 {
-//----------------------------------------------------------------------------------------------------------------------
+//
 // Fields
-//----------------------------------------------------------------------------------------------------------------------
+//
 
-    private static final Logger logger = LoggerFactory.getLogger(TestChainedTransactionManager.class);
     public static final String TEST_QUEUE = "testQueue";
+    private static final Logger logger = LoggerFactory.getLogger(TestChainedTransactionManager.class);
 
     private BasicDataSource ds1;
     private BasicDataSource ds2;
@@ -48,9 +48,9 @@ public class TestChainedTransactionManager
     private JmsTransactionManager jmsTransactionManager;
     private ChainedTransactionManager chainedTransactionManager;
 
-//----------------------------------------------------------------------------------------------------------------------
+//
 // Other Methods
-//----------------------------------------------------------------------------------------------------------------------
+//
 
     @After
     public void closeConnections()
@@ -104,57 +104,6 @@ public class TestChainedTransactionManager
         return ds;
     }
 
-    private void executeUpdate(String sql, DataSource dataSource)
-    {
-        Connection connection = null;
-        Statement statement = null;
-        try
-        {
-            connection = dataSource.getConnection();
-            statement = connection.createStatement();
-            statement.executeUpdate(sql);
-        }
-        catch (SQLException e)
-        {
-            throw new RuntimeException("Unable to execute update.", e);
-        }
-        finally
-        {
-            closeStatement(statement);
-            closeConnection(connection);
-        }
-    }
-
-    private void closeConnection(Connection connection)
-    {
-        try
-        {
-            if (connection != null)
-            {
-                connection.close();
-            }
-        }
-        catch (SQLException e)
-        {
-            logger.error("Unable to close connection.", e);
-        }
-    }
-
-    private void closeStatement(Statement statement)
-    {
-        try
-        {
-            if (statement != null)
-            {
-                statement.close();
-            }
-        }
-        catch (SQLException e)
-        {
-            logger.error("Unable to close statement.", e);
-        }
-    }
-
     @Before
     public void setUpJtaTransactionManager() throws Exception
     {
@@ -180,7 +129,84 @@ public class TestChainedTransactionManager
         assertEquals(1, getRowCount(ds1));
         assertEquals(1, getRowCount(ds2));
         assertEquals("Hello, World!", getMessageFromQueue(TEST_QUEUE));
+    }
 
+    private void executeUpdate(String sql, DataSource dataSource)
+    {
+        Connection connection = null;
+        Statement statement = null;
+        try
+        {
+            connection = dataSource.getConnection();
+            statement = connection.createStatement();
+            statement.executeUpdate(sql);
+        }
+        catch (SQLException e)
+        {
+            throw new RuntimeException("Unable to execute update.", e);
+        }
+        finally
+        {
+            closeStatement(statement);
+            closeConnection(connection);
+        }
+    }
+
+    private void closeStatement(Statement statement)
+    {
+        try
+        {
+            if (statement != null)
+            {
+                statement.close();
+            }
+        }
+        catch (SQLException e)
+        {
+            logger.error("Unable to close statement.", e);
+        }
+    }
+
+    private void closeConnection(Connection connection)
+    {
+        try
+        {
+            if (connection != null)
+            {
+                connection.close();
+            }
+        }
+        catch (SQLException e)
+        {
+            logger.error("Unable to close connection.", e);
+        }
+    }
+
+    private int getRowCount(DataSource ds)
+    {
+        RowCountCallbackHandler handler = new RowCountCallbackHandler();
+        new JdbcTemplate(ds).query("select * from test_table", handler);
+        return handler.getRowCount();
+    }
+
+    private String getMessageFromQueue(String queueName)
+    {
+        try
+        {
+            JmsTemplate template = new JmsTemplate(connectionFactory);
+            template.setReceiveTimeout(10);
+
+            Message message = template.receive(queueName);
+            if (message instanceof TextMessage)
+            {
+                return ((TextMessage) message).getText();
+            }
+            return null;
+        }
+        catch (JMSException e)
+        {
+            throw new RuntimeException("Unable to retrieve message.", e );
+        }
     }
 
     @Test
@@ -211,41 +237,14 @@ public class TestChainedTransactionManager
         assertNoMessagesInQueue(TEST_QUEUE);
     }
 
-    private void assertNoMessagesInQueue(String queueName)
-    {
-        assertNull(getMessageFromQueue(queueName));
-    }
-
-    private String getMessageFromQueue(String queueName)
-    {
-        try
-        {
-            JmsTemplate template = new JmsTemplate(connectionFactory);
-            template.setReceiveTimeout(10);
-
-            Message message = template.receive(queueName);
-            if (message instanceof TextMessage)
-            {
-                return ((TextMessage) message).getText();
-            }
-            return null;
-        }
-        catch (JMSException e)
-        {
-            throw new RuntimeException("Unable to retrieve message.", e );
-        }
-    }
-
     private void assertNoRowsInTable(DataSource ds)
     {
         int rowCount = getRowCount(ds);
         assertEquals(0, rowCount);
     }
 
-    private int getRowCount(DataSource ds)
+    private void assertNoMessagesInQueue(String queueName)
     {
-        RowCountCallbackHandler handler = new RowCountCallbackHandler();
-        new JdbcTemplate(ds).query("select * from test_table", handler);
-        return handler.getRowCount();
+        assertNull(getMessageFromQueue(queueName));
     }
 }

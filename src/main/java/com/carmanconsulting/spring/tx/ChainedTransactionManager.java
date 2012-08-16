@@ -17,11 +17,18 @@ import static java.util.Arrays.asList;
  */
 public class ChainedTransactionManager implements PlatformTransactionManager
 {
+//
+// Fields
+//
 
     private final static Logger logger = LoggerFactory.getLogger(ChainedTransactionManager.class);
 
     private final List<PlatformTransactionManager> transactionManagers;
     private final SynchronizationManager synchronizationManager;
+
+//
+// Constructors
+//
 
     public ChainedTransactionManager(PlatformTransactionManager... transactionManagers)
     {
@@ -34,30 +41,13 @@ public class ChainedTransactionManager implements PlatformTransactionManager
         this.transactionManagers = asList(transactionManagers);
     }
 
-    @Override
-    public MultiTransactionStatus getTransaction(TransactionDefinition definition) throws TransactionException
-    {
-
-        MultiTransactionStatus mts = new MultiTransactionStatus(transactionManagers.get(0)/*First TM is main TM*/);
-
-        if (!synchronizationManager.isSynchronizationActive())
-        {
-            synchronizationManager.initSynchronization();
-            mts.setNewSynchonization();
-        }
-
-        for (PlatformTransactionManager transactionManager : transactionManagers)
-        {
-            mts.registerTransactionManager(definition, transactionManager);
-        }
-
-        return mts;
-    }
+//
+// PlatformTransactionManager Implementation
+//
 
     @Override
     public void commit(TransactionStatus status) throws TransactionException
     {
-
         MultiTransactionStatus multiTransactionStatus = (MultiTransactionStatus) status;
 
         boolean commit = true;
@@ -104,13 +94,30 @@ public class ChainedTransactionManager implements PlatformTransactionManager
             int transactionState = firstTransactionManagerFailed ? HeuristicCompletionException.STATE_ROLLED_BACK : HeuristicCompletionException.STATE_MIXED;
             throw new HeuristicCompletionException(transactionState, commitException);
         }
+    }
 
+    @Override
+    public MultiTransactionStatus getTransaction(TransactionDefinition definition) throws TransactionException
+    {
+        MultiTransactionStatus mts = new MultiTransactionStatus(transactionManagers.get(0)/*First TM is main TM*/);
+
+        if (!synchronizationManager.isSynchronizationActive())
+        {
+            synchronizationManager.initSynchronization();
+            mts.setNewSynchonization();
+        }
+
+        for (PlatformTransactionManager transactionManager : transactionManagers)
+        {
+            mts.registerTransactionManager(definition, transactionManager);
+        }
+
+        return mts;
     }
 
     @Override
     public void rollback(TransactionStatus status) throws TransactionException
     {
-
         Exception rollbackException = null;
         PlatformTransactionManager rollbackExceptionTransactionManager = null;
 
@@ -149,13 +156,9 @@ public class ChainedTransactionManager implements PlatformTransactionManager
         }
     }
 
-    private <T> Iterable<T> reverse(Collection<T> collection)
-    {
-        List<T> list = new ArrayList<T>(collection);
-        Collections.reverse(list);
-        return list;
-    }
-
+//
+// Other Methods
+//
 
     private PlatformTransactionManager getLastTransactionManager()
     {
@@ -167,4 +170,10 @@ public class ChainedTransactionManager implements PlatformTransactionManager
         return transactionManagers.size() - 1;
     }
 
+    private <T> Iterable<T> reverse(Collection<T> collection)
+    {
+        List<T> list = new ArrayList<T>(collection);
+        Collections.reverse(list);
+        return list;
+    }
 }
